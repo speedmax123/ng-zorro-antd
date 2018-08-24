@@ -38,6 +38,7 @@ import { filter, tap } from 'rxjs/operators';
 
 import { selectDropDownAnimation } from '../core/animation/select-dropdown-animations';
 import { selectTagAnimation } from '../core/animation/select-tag-animations';
+import { InputBoolean } from '../core/util/convert';
 import { NzFormatEmitEvent } from '../tree/interface';
 import { NzTreeNode } from '../tree/nz-tree-node';
 import { NzTreeComponent } from '../tree/nz-tree.component';
@@ -76,13 +77,14 @@ import { NzTreeComponent } from '../tree/nz-tree.component';
 })
 export class NzTreeSelectComponent implements ControlValueAccessor, OnInit, AfterViewInit, OnDestroy {
 
+  private nodes = [];
   isInit = false;
   isComposing = false;
   isDestroy = true;
   inputValue = '';
   dropDownClassMap: { [ className: string ]: boolean };
   dropDownPosition: 'top' | 'center' | 'bottom' = 'bottom';
-  overlayRef: OverlayRef | null;
+  overlayRef: OverlayRef;
   portal: TemplatePortal<{}>;
   positionStrategy: FlexibleConnectedPositionStrategy;
   overlayBackdropClickSubscription: Subscription;
@@ -91,31 +93,40 @@ export class NzTreeSelectComponent implements ControlValueAccessor, OnInit, Afte
   selectedNodes: NzTreeNode[] = [];
   value: string[] = [];
 
+  @Input() @InputBoolean() nzAllowClear = true;
+  @Input() @InputBoolean() nzShowExpand = true;
+  @Input() @InputBoolean() nzDropdownMatchSelectWidth = true;
+  @Input() @InputBoolean() nzCheckable = false;
+  @Input() @InputBoolean() nzShowSearch = false;
+  @Input() @InputBoolean() nzDisabled = false;
+  @Input() @InputBoolean() nzShowLine = false;
+  @Input() @InputBoolean() nzAsyncData = false;
+  @Input() @InputBoolean() nzMultiple = false;
+  @Input() @InputBoolean() nzDefaultExpandAll = false;
   @Input() nzOpen = false;
-  @Input() nzAllowClear = true;
   @Input() nzSize = 'default';
-  @Input() nzDropdownMatchSelectWidth = true;
   @Input() nzPlaceHolder = '';
-  @Input() nzShowSearch = true;
-  @Input() nzDisabled = false;
   @Input() nzDropdownStyle: { [ key: string ]: string; };
-
-  @Input() nzCheckable = false;
-  @Input() nzShowExpand = true;
-  @Input() nzShowLine = false;
-  @Input() nzAsyncData = false;
-  @Input() nzMultiple = false;
-  @Input() nzDefaultExpandAll = false;
   @Input() nzDefaultExpandedKeys: string[] = [];
-  @Input() nzNodes: NzTreeNode[] = [];
-
+  @Input() nzDisplayWith: (node: NzTreeNode) => string = (node: NzTreeNode) => node.title;
   @Output() nzOpenChange = new EventEmitter<boolean>();
   @Output() nzCleared = new EventEmitter<void>();
   @Output() nzRemoved = new EventEmitter<NzTreeNode>();
-
   @Output() nzExpandChange = new EventEmitter<NzFormatEmitEvent>();
   @Output() nzTreeClick = new EventEmitter<NzFormatEmitEvent>();
   @Output() nzTreeCheckBoxChange = new EventEmitter<NzFormatEmitEvent>();
+
+  @Input()
+  set nzNodes(value: NzTreeNode[]) {
+    this.nodes = value;
+    if (this.isInit) {
+      setTimeout(() => this.updateSelectedNodes(), 0);
+    }
+  }
+
+  get nzNodes(): NzTreeNode[] {
+    return this.nodes;
+  }
 
   @ViewChild('inputElement') inputElement: ElementRef;
   @ViewChild('treeSelect') treeSelect: ElementRef;

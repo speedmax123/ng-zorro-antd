@@ -68,6 +68,15 @@ export interface CascaderOption {
   [ key: string ]: any;
 }
 
+export interface CascaderSearchOption extends CascaderOption {
+  path: CascaderOption[];
+}
+
+export interface NzShowSearchOptions {
+  filter?(inputValue: string, path: CascaderOption[]): boolean;
+  sorter?(a: CascaderOption[], b: CascaderOption[], inputValue: string): number;
+}
+
 @Component({
   selector           : 'nz-cascader,[nz-cascader]',
   preserveWhitespaces: false,
@@ -110,7 +119,7 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
   private menuClassName;
   private columnClassName;
   private changeOnSelect = false;
-  // private showSearch = false;
+  private showSearch: boolean | NzShowSearchOptions;
   private defaultValue: any[];
 
   public dropDownPosition = 'bottom';
@@ -157,6 +166,27 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
 
   set inputValue(inputValue: string) {
     this._inputValue = inputValue;
+    const willBeInSearch = !!inputValue;
+
+    // 搜索状态变动之前，如要进入则要保留之前激活选项的快照，退出搜索状态要还原该快照
+    if (!this.inSearch && willBeInSearch) {
+      this.oldActivatedOptions = this.activatedOptions;
+      this.activatedOptions = [];
+      this.searchWidthStyle = `${this.input.nativeElement.offsetWidth}px`;
+    } else if (this.inSearch && !willBeInSearch) {
+      this.activatedOptions = this.oldActivatedOptions;
+    }
+
+    // 搜索状态变更之后
+    this.inSearch = !!willBeInSearch;
+    if (this.inSearch) {
+      this.prepareSearchValue();
+    } else {
+      if (this.showSearch) {
+        this.nzColumns = this.oldColumnsHolder;
+      }
+      this.searchWidthStyle = '';
+    }
     this.setClassMap();
   }
 
@@ -229,16 +259,21 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
   }
 
   /** Whether can search. Defaults to `false`. */
-
-  /* // not support yet
   @Input()
-  set nzShowSearch(value: boolean) {
-    this.showSearch = toBoolean(value);
+  set nzShowSearch(value: boolean | NzShowSearchOptions) {
+    this.showSearch = value;
   }
-  get nzShowSearch(): boolean {
+
+  get nzShowSearch(): boolean | NzShowSearchOptions {
     return this.showSearch;
   }
-  */
+
+  public searchWidthStyle: string;
+  private oldColumnsHolder;
+  private oldActivatedOptions;
+
+  /** If cascader is in search mode. */
+  public inSearch = false;
 
   /** Whether allow clear. Defaults to `true`. */
   @Input()
@@ -294,7 +329,7 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
 
   /** Options for first column, sub column will be load async */
   @Input() set nzOptions(options: CascaderOption[] | null) {
-    this.nzColumns = options && options.length ? [ options ] : [];
+    this.oldColumnsHolder = this.nzColumns = options && options.length ? [ options ] : [];
     if (this.defaultValue && this.nzColumns.length) {
       this.initOptions(0);
     }
@@ -370,6 +405,7 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
   /** Event: emit on the clear button clicked */
   @Output() nzClear = new EventEmitter<void>();
 
+  @ViewChild('input') input: ElementRef;
   /** 浮层菜单 */
   @ViewChild('menu') menu: ElementRef;
 
@@ -404,6 +440,7 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
       }
       this.isFocused = false;
       this.setClassMap();
+      this.setLabelClass();
     }
   }
 
@@ -428,7 +465,9 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
 
   private setLabelClass(): void {
     this._labelCls = {
-      [ `${this.prefixCls}-picker-label` ]: true
+      [ `${this.prefixCls}-picker-label` ]: true,
+      [ `${this.prefixCls}-show-search` ] : !!this.nzShowSearch,
+      [ `${this.prefixCls}-focused` ]     : !!this.nzShowSearch && this.isFocused && !this._inputValue
     };
   }
 
@@ -543,6 +582,7 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
     }
     */
     this.focus();
+    this.setLabelClass();
   }
 
   private hasInput(): boolean {
@@ -609,6 +649,14 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
       return;
     }
 
+    if (this.inSearch && (
+      keyCode === BACKSPACE ||
+      keyCode === LEFT_ARROW ||
+      keyCode === RIGHT_ARROW
+    )) {
+      return;
+    }
+
     // Press any keys above to reopen menu
     if (!this.isMenuVisible() &&
       keyCode !== BACKSPACE &&
@@ -644,6 +692,9 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
       return;
     }
     this.onTouched(); // set your control to 'touched'
+    if (this.nzShowSearch) {
+      this.focus();
+    }
 
     if (this.isClickTiggerAction()) {
       this.delaySetMenuVisible(!this.menuVisible, 100);
@@ -697,6 +748,7 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
   }
 
   public closeMenu(): void {
+    this.blur();
     this.clearDelayTimer();
     this.setMenuVisible(false);
   }
@@ -897,7 +949,9 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
    * @param event 鼠标事件
    */
   onOptionClick(option: CascaderOption, index: number, event: Event): void {
-    event.preventDefault();
+    if (event) {
+      event.preventDefault();
+    }
 
     // Keep focused state for keyboard support
     this.el.focus();
@@ -905,7 +959,12 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
     if (option && option.disabled) {
       return;
     }
-    this.setActiveOption(option, index, true);
+
+    if (this.inSearch) {
+      this.setSearchActiveOption(option as CascaderSearchOption, event);
+    } else {
+      this.setActiveOption(option, index, true);
+    }
   }
 
   /** 按下回车键时选择 */
@@ -913,7 +972,11 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
     const columnIndex = Math.max(this.activatedOptions.length - 1, 0);
     const activeOption = this.activatedOptions[ columnIndex ];
     if (activeOption && !activeOption.disabled) {
-      this.onSelectOption(activeOption, columnIndex);
+      if (this.inSearch) {
+        this.setSearchActiveOption(activeOption as CascaderSearchOption, null);
+      } else {
+        this.onSelectOption(activeOption, columnIndex);
+      }
     }
   }
 
@@ -1019,7 +1082,8 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
     this.clearDelaySelectTimer();
     if (doSelect) {
       this.delaySelectTimer = setTimeout(() => {
-        this.setActiveOption(option, index, true);
+        // 鼠标滑入只展开，不进行选中操作
+        this.setActiveOption(option, index);
         this.delaySelectTimer = null;
       }, 150);
     }
@@ -1132,6 +1196,86 @@ export class NzCascaderComponent implements OnInit, OnDestroy, ControlValueAcces
       this.closeMenu();
     }
     this.nzDisabled = isDisabled;
+  }
+
+  private prepareSearchValue(): void {
+    const results: CascaderSearchOption[] = [];
+    const path: CascaderOption[] = [];
+    const defaultFilter = (inputValue: string, p: CascaderOption[]): boolean => {
+      let flag = false;
+      p.forEach(n => {
+        if (n.label.indexOf(inputValue) > -1) {
+          flag = true;
+        }
+      });
+      return flag;
+    };
+    const filter: (inputValue: string, p: CascaderOption[]) => boolean =
+      this.nzShowSearch instanceof Object && (this.nzShowSearch as NzShowSearchOptions).filter ?
+        (this.nzShowSearch as NzShowSearchOptions).filter :
+        defaultFilter;
+    const sorter: (a: CascaderOption[], b: CascaderOption[], inputValue: string) => number =
+      this.nzShowSearch instanceof Object && (this.nzShowSearch as NzShowSearchOptions).sorter;
+    const loopParent = (node: CascaderOption, forceDisabled = false) => {
+      const disabled = forceDisabled || node.disabled;
+      path.push(node);
+      node.children.forEach((sNode) => {
+        if (!sNode.parent) {
+          sNode.parent = node;
+        }
+        /** 搜索的同时建立 parent 连接，因为用户直接搜索的话是没有建立连接的，会提升从叶子节点回溯的难度 */
+        if (!sNode.isLeaf) {
+          loopParent(sNode, disabled);
+        }
+        if (sNode.isLeaf || !sNode.children) {
+          loopChild(sNode, disabled);
+        }
+      });
+      path.pop();
+    };
+    const loopChild = (node: CascaderOption, forceDisabled = false) => {
+      path.push(node);
+      const cPath = Array.from(path);
+      if (filter(this._inputValue, cPath)) {
+        const disabled = forceDisabled || node.disabled;
+        results.push({
+          disabled,
+          isLeaf: true,
+          path  : cPath,
+          label : cPath.map(p => p.label).join(' / ')
+        } as CascaderSearchOption);
+      }
+      path.pop();
+    };
+
+    this.oldColumnsHolder[ 0 ].forEach(node => loopParent(node));
+    if (sorter) {
+      results.sort((a, b) => sorter(a.path, b.path, this._inputValue));
+    }
+    this.nzColumns = [ results ];
+  }
+
+  renderSearchString(str: string): string {
+    return str.replace(new RegExp(this._inputValue, 'g'),
+      `<span class="ant-cascader-menu-item-keyword">${this._inputValue}</span>`);
+  }
+
+  setSearchActiveOption(result: CascaderSearchOption, event: Event): void {
+    this.activatedOptions = [ result ];
+    this.delaySetMenuVisible(false, 200);
+
+    setTimeout(() => {
+      this.inputValue = ''; // Not only remove `inputValue` but also reverse `nzColumns` in the hook.
+      const index = result.path.length - 1;
+      const destiNode = result.path[ index ];
+      const mockClickParent = (node: CascaderOption, cIndex: number) => {
+        if (node && node.parent) {
+          mockClickParent(node.parent, cIndex - 1);
+        }
+        this.onOptionClick(node, cIndex, event);
+      };
+      mockClickParent(destiNode, index);
+    }, 300);
   }
 
   ngOnInit(): void {
