@@ -10,7 +10,7 @@ describe('tabs', () => {
   beforeEach(fakeAsync(() => {
     TestBed.configureTestingModule({
       imports     : [ NzTabsModule ],
-      declarations: [ NzTestTabsBasicComponent ]
+      declarations: [ NzTestTabsBasicComponent, NzTestTabsTabPositionLeftComponent ]
     });
     TestBed.compileComponents();
   }));
@@ -452,7 +452,7 @@ describe('tabs', () => {
     it('should prevent focus scroll', fakeAsync(() => {
       fixture.detectChanges();
       expect(tabs.nativeElement.scrollLeft).toBe(0);
-      const input: HTMLInputElement = tabs.nativeElement.querySelector('input');
+      const input: HTMLInputElement = tabs.nativeElement.querySelector('button');
       input.focus();
       expect(tabs.nativeElement.scrollLeft > 0).toBe(true);
       dispatchFakeEvent(tabs.nativeElement, 'scroll');
@@ -460,6 +460,15 @@ describe('tabs', () => {
       fixture.detectChanges();
       expect(tabs.nativeElement.scrollLeft).toBe(0);
     }));
+  });
+
+  describe('init nzTabPosition to left', () => {
+    it('should next and prev buttons display abnormal', () => {
+      const fixture = TestBed.createComponent(NzTestTabsTabPositionLeftComponent);
+      fixture.detectChanges();
+      const tabs = fixture.debugElement.query(By.directive(NzTabSetComponent));
+      expect(tabs.nativeElement.querySelector('.ant-tabs-nav-container').classList).not.toContain('ant-tabs-nav-container-scrolling');
+    });
   });
 });
 
@@ -496,7 +505,10 @@ describe('tabs', () => {
           (nzDeselect)="deselect01()"
           (nzSelect)="select01()"
           (nzClick)="click01()"
-          [nzDisabled]="disabled">Content 2<!----><input></nz-tab>
+          [nzDisabled]="disabled">
+          Content 2<!---->
+          <button></button>
+        </nz-tab>
         <nz-tab
           nzTitle="add"
           *ngIf="add"
@@ -537,4 +549,19 @@ export class NzTestTabsBasicComponent {
   select02 = jasmine.createSpy('select02 callback');
   deselect02 = jasmine.createSpy('deselect02 callback');
   array = [];
+}
+
+/** https://github.com/NG-ZORRO/ng-zorro-antd/issues/1964 **/
+@Component({
+  selector: 'nz-test-tabs-tab-position-left',
+  template: `
+    <nz-tabset nzTabPosition="left">
+      <nz-tab *ngFor="let tab of tabs" [nzTitle]="'Tab'+ tab">
+        Content of tab {{ tab }}
+      </nz-tab>
+    </nz-tabset>
+  `
+})
+export class NzTestTabsTabPositionLeftComponent {
+  tabs = [1, 2, 3];
 }
